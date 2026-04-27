@@ -1,0 +1,4 @@
+To compile the solution, enter the sysmgr directory, type "make". If you want a clean build, type "make clean".
+The programs will be in the ./bin folder.
+
+To set up the environment correctly for running the solution make sure your type "source setup.sh". This will add the ./bin folder to the PATH, as well as set up the environment SYSCONFIGDIR environment variable to point to ./config. This is needed for the configuration program to set things up for running.

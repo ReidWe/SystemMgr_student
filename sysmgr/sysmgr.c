@@ -1,8 +1,3 @@
-/*
-    Author: Joe Waclawski
-    Shell System Manager that students can use
-    in their CSE384 Final Projecgt
-*/
 #include <stdio.h>
 #include <signal.h>
 #include <unistd.h>
@@ -11,7 +6,6 @@
 #include <stdlib.h>
 #include "configreader.h"
 
-// structure to hold the parameters that are sent to the signal handling thread
 typedef struct tp
 {
     int lnSignal;
@@ -24,138 +18,159 @@ typedef struct pt
     int lnPid;
 } ProcTableEntry;
 
-    
-// TODO
-// create the process empty table
-// This must be global so all functions can easily access it. 
-// To create the process table, you will need an array of 3 ProcTableEntry structure. 
-
-// make thread params pointer global so that it persists in the thread
+ProcTableEntry gProcTable[MAX_NUM_CHILDREN];
 ThreadParams * gpThreadParams = NULL;
 
-// prototypesdd
 void StartChildren();
 void *SignalThread( void *ptr );
 void StartProc(ProcTableEntry * lpProcTableEntry);
 void TermChildren();
+void RestartChild(int lnPid);
 
-// our signal handler
-// NOTHING TODO HERE
 void SigHandler(int sig, siginfo_t *info, void *context)
 {
-    // need to dynamically allocate memory, which must exist AFTER
-    // signal handler exists
-    // Thread MUST delete memory to prevent memory leak
     gpThreadParams = (ThreadParams*) malloc(sizeof(ThreadParams));
     gpThreadParams->lnSignal = sig;
     gpThreadParams->lpSigInfo = info;
-    // we don't uset the context. it is for advanced signal handling, but
-    // we need to do something with it to get rid of the unused parameter compiler warning
-    context = context;    
+    context = context;
 
-    // create a thread to handle the signal   
-    pthread_t thread1;    
-    int iret1 = pthread_create( &thread1, NULL, SignalThread, (void*) gpThreadParams);
-    
-    if (iret1 !=0)
+    pthread_t thread1;
+    int iret1 = pthread_create(&thread1, NULL, SignalThread, (void*) gpThreadParams);
+
+    if (iret1 != 0)
     {
-	    printf("Unable to create thread. Exiting");
-	    exit(-1); // exiting ensures any threads that did start will be terminated
+        printf("Unable to create thread. Exiting");
+        exit(-1);
     }
 }
-
 
 int main()
 {
-    // place to store our system config
     SystemConfig lsSystemConfig;
-    
-    // Read configuration
-    // This will define information about the child processes for use
-    // by all applications in the Final Project. 
-    GetSystemConfig(&lsSystemConfig); 
-    
-    
-    
-    // TODO
-    // install the signal handlers
-    // use the sigaction library function instead of signal to get more information
-    // about the process that sent the signal
-    // the generic signal handler has already been defined.
 
-    // TODO
-    // Initialize the process table with information from the configuration
-    // Note that the lnPid member will not initially defined.
-    
-    // start children
+    GetSystemConfig(&lsSystemConfig);
+
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = SigHandler;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+
+    sigaction(SIGINT,  &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGQUIT, &sa, NULL);
+    sigaction(SIGABRT, &sa, NULL);
+    sigaction(SIGCHLD, &sa, NULL);
+
+    strncpy(gProcTable[0].lanProcName, lsSystemConfig.lanChild1Proc, 1024);
+    gProcTable[0].lnPid = -1;
+
+    strncpy(gProcTable[1].lanProcName, lsSystemConfig.lanChild2Proc, 1024);
+    gProcTable[1].lnPid = -1;
+
+    strncpy(gProcTable[2].lanProcName, lsSystemConfig.lanChild3Proc, 1024);
+    gProcTable[2].lnPid = -1;
+
     StartChildren();
-    
-    // do nothing waiting to be terminated 
-    for(int i=1;;i++)
-    {    //Infinite loop
-        printf("%d : *** PARENT: %d\n",i, getpid());
-        sleep(3);  // Delay
+
+    for (int i = 1;; i++)
+    {
+        printf("%d : *** PARENT: %d\n", i, getpid());
+        sleep(3);
     }
     return 0;
 }
-  
 
-void StartChildren() 
-{  
-	// TODO
-	// complete this function by starting children defined in process table
-	// don't forget update the pid in the table
+void StartChildren()
+{
+    for (int i = 0; i < MAX_NUM_CHILDREN; i++)
+    {
+        StartProc(&gProcTable[i]);
+    }
 }
 
+void StartProc(ProcTableEntry * lpProcTableEntry)
+{
+    pid_t pid = fork();
+
+    if (pid < 0)
+    {
+        perror("fork failed");
+        exit(-1);
+    }
+    else if (pid == 0)
+    {
+        char *nl = strchr(lpProcTableEntry->lanProcName, '\n');
+        if (nl) *nl = '\0';
+
+        execl(lpProcTableEntry->lanProcName,
+              lpProcTableEntry->lanProcName,
+              NULL);
+
+        perror("execl failed");
+        exit(-1);
+    }
+    else
+    {
+        lpProcTableEntry->lnPid = pid;
+        printf("Started child %s with PID %d\n", lpProcTableEntry->lanProcName, pid);
+    }
+}
 
 void RestartChild(int lnPid)
 {
-	// TODO
-	// complete this function by restarting the terminated child represented
-	// by the Pid that was passed in
-	// HINT, search the Process table for the Pid, and replace it
-	// with the newly created child process
+    for (int i = 0; i < MAX_NUM_CHILDREN; i++)
+    {
+        if (gProcTable[i].lnPid == lnPid)
+        {
+            printf("Restarting child %s (old PID %d)\n", gProcTable[i].lanProcName, lnPid);
+            StartProc(&gProcTable[i]);
+            return;
+        }
+    }
+    printf("RestartChild: PID %d not found in process table\n", lnPid);
 }
 
 void TermChildren()
 {
-	// TODO
-	// terminate all child processed found in the Process table
+    for (int i = 0; i < MAX_NUM_CHILDREN; i++)
+    {
+        if (gProcTable[i].lnPid > 0)
+        {
+            printf("Terminating child %s (PID %d)\n", gProcTable[i].lanProcName, gProcTable[i].lnPid);
+            kill(gProcTable[i].lnPid, SIGTERM);
+            gProcTable[i].lnPid = -1;
+        }
+    }
 }
 
-// Signal thread that handles all signals for which this 
-// application registered
-// NOTHING TODO HERE
 void *SignalThread( void *ptr )
 {
-    // cast our input argument to the correct type that we are expecting
     ThreadParams * lpThreadParams = (ThreadParams*) ptr;
-    
+
     switch(lpThreadParams->lnSignal)
     {
         case SIGINT:
         case SIGTERM:
         case SIGQUIT:
         case SIGABRT:
-        printf("****** Process %d receivd SIGINT (%d) from process %d\n", getpid(), lpThreadParams->lnSignal, lpThreadParams->lpSigInfo->si_pid);
+        printf("****** Process %d receivd SIGINT (%d) from process %d\n",
+               getpid(), lpThreadParams->lnSignal, lpThreadParams->lpSigInfo->si_pid);
         TermChildren();
         exit(-10);
         break;
-        
+
         case SIGCHLD:
-        printf("****** Process %d receivd SIGCHLD (%d) from process %d\n", getpid(), lpThreadParams->lnSignal, lpThreadParams->lpSigInfo->si_pid);
-        
-        // restart the child that just died
+        printf("****** Process %d receivd SIGCHLD (%d) from process %d\n",
+               getpid(), lpThreadParams->lnSignal, lpThreadParams->lpSigInfo->si_pid);
         RestartChild(lpThreadParams->lpSigInfo->si_pid);
         break;
-        
+
         default:
-        printf("Process %d receivd signal %d from process %d\n", getpid(), lpThreadParams->lnSignal, lpThreadParams->lpSigInfo->si_pid);        
+        printf("Process %d receivd signal %d from process %d\n",
+               getpid(), lpThreadParams->lnSignal, lpThreadParams->lpSigInfo->si_pid);
     }
-    
-    // per comment in Signal Handler, the memory must be deleted when 
-    // we are done with it
+
     free(lpThreadParams);
-    
     return NULL;
 }

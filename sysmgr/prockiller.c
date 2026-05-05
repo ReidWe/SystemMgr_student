@@ -29,34 +29,26 @@ int main(void){
     // Read configuration
     GetSystemConfig(&lsSystemConfig); 
 
+    // Show the user a menu
+    printf("%s at %d\n", lsSystemConfig.lanChild1Proc, lsSystemConfig.lnChild1Port);
+    printf("%s at %d\n", lsSystemConfig.lanChild2Proc, lsSystemConfig.lnChild2Port);
+    printf("%s at %d\n", lsSystemConfig.lanChild3Proc, lsSystemConfig.lnChild3Port);
+
     // inf loop for selection
     while(1){
-        // Show the user a menu
-        printf("Which child do you want to kill?\n");
-        printf("1) %s (port %d)\n", lsSystemConfig.lanChild1Proc, lsSystemConfig.lnChild1Port);
-        printf("2) %s (port %d)\n", lsSystemConfig.lanChild2Proc, lsSystemConfig.lnChild2Port);
-        printf("3) %s (port %d)\n", lsSystemConfig.lanChild3Proc, lsSystemConfig.lnChild3Port);
-        printf("0) Quit\n");
+        printf("Enter the child's port to kill the child: ");
+        int targetPort;
+        scanf("%d", &targetPort);
 
-        // Get user choice
-        int choice;
-        scanf("%d", &choice);
-
-        if(choice == 0){
+        if(targetPort == 0){
             printf("Exiting ProcKiller\n");
             break;
         }
-        
-        // Figure out which port to send it to
-        int targetPort = -1;
-        if(choice == 1){
-            targetPort = lsSystemConfig.lnChild1Port;
-        }else if(choice == 2){
-            targetPort = lsSystemConfig.lnChild2Port;
-        }else if(choice == 3){
-            targetPort = lsSystemConfig.lnChild3Port;
-        }else{
-            printf("Invalid choice, try again\n");
+
+        if(targetPort != lsSystemConfig.lnChild1Port &&
+        targetPort != lsSystemConfig.lnChild2Port &&
+        targetPort != lsSystemConfig.lnChild3Port){
+            printf("Invalid port, try again\n");
             continue;
         }
 

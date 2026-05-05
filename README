@@ -1,4 +1,33 @@
-To compile the solution, enter the sysmgr directory, type "make". If you want a clean build, type "make clean".
-The programs will be in the ./bin folder.
+BUILD
+~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*
+From the project root, enter the sysmgr directory and run make:
+ 
+	cd sysmgr	
+	make
+ 
+Binaries will be placed in the bin/ folder. To do a clean rebuild:
+ 
+	make clean 
+ 	make
+ 
+ 
+RUNNING
+~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*
+Set up the environment
+ 
+	From the project root, run:
+ 
+   	source setup.sh
+  
+Start the system manager
+ 
+ 	From the project root, run:
+ 
+    	sysmgr
+IMPORTANT NOTES
+~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*~*
+ 	All programs must be run from the project root
+ 
+  	source setup.sh must be run before starting any of the programs
 
-To set up the environment correctly for running the solution make sure your type "source setup.sh". This will add the ./bin folder to the PATH, as well as set up the environment SYSCONFIGDIR environment variable to point to ./config. This is needed for the configuration program to set things up for running.
+	The project is currently built in bin, but rebuilding is recommended

@@ -9,7 +9,7 @@
 typedef struct tp
 {
     int lnSignal;
-    siginfo_t * lpSigInfo;
+    siginfo_t lSigInfo;   // store by value, not pointer
 } ThreadParams;
 
 typedef struct pt
@@ -19,7 +19,9 @@ typedef struct pt
 } ProcTableEntry;
 
 ProcTableEntry gProcTable[MAX_NUM_CHILDREN];
-ThreadParams * gpThreadParams = NULL;
+
+// global shutdown flag so SIGCHLD doesn't restart children while we're exiting
+volatile sig_atomic_t gShuttingDown = 0;
 
 void StartChildren();
 void *SignalThread( void *ptr );
@@ -29,19 +31,27 @@ void RestartChild(int lnPid);
 
 void SigHandler(int sig, siginfo_t *info, void *context)
 {
-    gpThreadParams = (ThreadParams*) malloc(sizeof(ThreadParams));
-    gpThreadParams->lnSignal = sig;
-    gpThreadParams->lpSigInfo = info;
-    context = context;
+    // allocate params for the signal thread    
+    ThreadParams *lpThreadParams = (ThreadParams*) malloc(sizeof(ThreadParams));
+    if (lpThreadParams == NULL) return;  // malloc failed, can't do much in a signal handler
+
+    lpThreadParams->lnSignal = sig;
+    lpThreadParams->lSigInfo = *info;   // copy the struct by value so it stays valid
+
+    (void)context;  // suppress unused warning cleanly
 
     pthread_t thread1;
-    int iret1 = pthread_create(&thread1, NULL, SignalThread, (void*) gpThreadParams);
+    int iret1 = pthread_create(&thread1, NULL, SignalThread, (void*) lpThreadParams);
 
     if (iret1 != 0)
     {
         printf("Unable to create thread. Exiting");
+        free(lpThreadParams);
         exit(-1);
     }
+
+    // detach the thread so its resources are freed automatically when it exits
+    pthread_detach(thread1);
 }
 
 int main()
@@ -70,6 +80,13 @@ int main()
 
     strncpy(gProcTable[2].lanProcName, lsSystemConfig.lanChild3Proc, 1024);
     gProcTable[2].lnPid = -1;
+
+    // Strip trailing newlines from names read out of config
+    for (int i = 0; i < MAX_NUM_CHILDREN; i++)
+    {
+        char *nl = strchr(gProcTable[i].lanProcName, '\n');
+        if (nl) *nl = '\0';
+    }
 
     StartChildren();
 
@@ -100,12 +117,7 @@ void StartProc(ProcTableEntry * lpProcTableEntry)
     }
     else if (pid == 0)
     {
-        char *nl = strchr(lpProcTableEntry->lanProcName, '\n');
-        if (nl) *nl = '\0';
-
-        execl(lpProcTableEntry->lanProcName,
-              lpProcTableEntry->lanProcName,
-              NULL);
+        execlp(lpProcTableEntry->lanProcName, lpProcTableEntry->lanProcName, NULL);
 
         perror("execl failed");
         exit(-1);
@@ -119,6 +131,9 @@ void StartProc(ProcTableEntry * lpProcTableEntry)
 
 void RestartChild(int lnPid)
 {
+    // check shutdown flag
+    if (gShuttingDown) return;
+
     for (int i = 0; i < MAX_NUM_CHILDREN; i++)
     {
         if (gProcTable[i].lnPid == lnPid)
@@ -154,21 +169,24 @@ void *SignalThread( void *ptr )
         case SIGTERM:
         case SIGQUIT:
         case SIGABRT:
-        printf("****** Process %d receivd SIGINT (%d) from process %d\n",
-               getpid(), lpThreadParams->lnSignal, lpThreadParams->lpSigInfo->si_pid);
+        printf("****** Process %d received signal (%d) from process %d\n",
+               getpid(), lpThreadParams->lnSignal, lpThreadParams->lSigInfo.si_pid);
+        
+        gShuttingDown = 1;
         TermChildren();
+        free(lpThreadParams);
         exit(-10);
         break;
 
         case SIGCHLD:
-        printf("****** Process %d receivd SIGCHLD (%d) from process %d\n",
-               getpid(), lpThreadParams->lnSignal, lpThreadParams->lpSigInfo->si_pid);
-        RestartChild(lpThreadParams->lpSigInfo->si_pid);
+        printf("****** Process %d received SIGCHLD (%d) from process %d\n",
+               getpid(), lpThreadParams->lnSignal, lpThreadParams->lSigInfo.si_pid);
+        RestartChild(lpThreadParams->lSigInfo.si_pid);
         break;
 
         default:
-        printf("Process %d receivd signal %d from process %d\n",
-               getpid(), lpThreadParams->lnSignal, lpThreadParams->lpSigInfo->si_pid);
+        printf("Process %d received signal %d from process %d\n",
+               getpid(), lpThreadParams->lnSignal, lpThreadParams->lSigInfo.si_pid);
     }
 
     free(lpThreadParams);
